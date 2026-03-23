@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$Repo = "YOUR_USERNAME/journal-app"
+$Repo = "Jack-McGinley/Terminal-Journal"
 $BinName = "journal.exe"
 $Asset = "journal-windows-x64.exe"
 $InstallDir = "$env:LOCALAPPDATA\journal"
