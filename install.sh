@@ -4,7 +4,7 @@
 
 set -e
 
-REPO="YOUR_USERNAME/journal-app"
+REPO="Jack-McGinley/Terminal-Journal"
 BIN_NAME="journal"
 INSTALL_DIR="/usr/local/bin"
 
