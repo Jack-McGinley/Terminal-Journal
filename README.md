@@ -10,12 +10,12 @@ A fast, beautiful terminal journal with folders, tags, full-text search, and aut
 
 **macOS / Linux:**
 ```sh
-curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/journal-app/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Jack-McGinley/Terminal-Journal/master/install.sh | sh
 ```
 
 **Windows (PowerShell / Windows Terminal):**
 ```powershell
-irm https://raw.githubusercontent.com/YOUR_USERNAME/journal-app/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/Jack-McGinley/Terminal-Journal/master/install.ps1 | iex
 ```
 
 ### Install from source (requires Node.js 18+)
@@ -150,7 +150,7 @@ Every device running the app with that same path will share entries automaticall
 
 ## Publishing your own release (for developers)
 
-1. Replace `YOUR_USERNAME` in `install.sh`, `install.ps1`, and this README with your GitHub username.
+1. Replace the install script URLs above if you fork this repo.
 2. Push to GitHub.
 3. Tag a release: `git tag v1.0.0 && git push origin v1.0.0`
 4. GitHub Actions automatically builds binaries for macOS (Intel + Apple Silicon), Linux (x64 + ARM), and Windows, and attaches them to the release.
