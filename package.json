@@ -1,0 +1,21 @@
+{
+  "name": "journal-app",
+  "version": "1.0.0",
+  "description": "A terminal-based journal with folders, tags, and search",
+  "type": "module",
+  "bin": {
+    "journal": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "figlet": "^1.7.0",
+    "gray-matter": "^4.0.3",
+    "ink": "^4.4.1",
+    "ink-text-input": "^5.0.1",
+    "react": "^18.2.0"
+  }
+}
