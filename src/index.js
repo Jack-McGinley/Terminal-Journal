@@ -480,15 +480,24 @@ function applyCompletion(value, completion) {
   return parts.join(' ');
 }
 
-// ── Prompt with tab completion ────────────────────────────────────────────────
+// ── Prompt with tab completion + command history ──────────────────────────────
 
 function Prompt({ cwd, onSubmit }) {
   const [value, setValue] = useState('');
   const [tabMatches, setTabMatches] = useState([]);
   const [tabIndex, setTabIndex] = useState(-1);
+  const [cmdHistory, setCmdHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [savedValue, setSavedValue] = useState('');
   const label = cwd === '/' ? '~' : '~' + cwd;
 
   const handleSubmit = useCallback((val) => {
+    const trimmed = val.trim();
+    if (trimmed) {
+      setCmdHistory(h => [trimmed, ...h]);
+    }
+    setHistoryIndex(-1);
+    setSavedValue('');
     setValue('');
     setTabMatches([]);
     setTabIndex(-1);
@@ -496,56 +505,82 @@ function Prompt({ cwd, onSubmit }) {
   }, [onSubmit]);
 
   useInput((input, key) => {
-    if (key.tab) {
-      // First tab press — build completion list
-      if (tabMatches.length === 0) {
-        const matches = getCompletions(value, cwd);
-        if (matches.length === 0) return;
-        if (matches.length === 1) {
-          // Unambiguous — complete immediately
-          setValue(applyCompletion(value, matches[0]));
-          return;
-        }
-        // Multiple matches — complete to longest common prefix then start cycling
-        const prefix = longestCommonPrefix(matches);
-        const withPrefix = applyCompletion(value, prefix);
-        setValue(withPrefix);
-        setTabMatches(matches);
-        setTabIndex(0);
-        setValue(applyCompletion(withPrefix, matches[0]));
+
+    // ── Up arrow: go back through history ──
+    if (key.upArrow) {
+      setCmdHistory(hist => {
+        if (!hist.length) return hist;
+        const next = Math.min(historyIndex + 1, hist.length - 1);
+        if (historyIndex === -1) setSavedValue(value); // save current draft
+        setHistoryIndex(next);
+        setValue(hist[next]);
+        return hist;
+      });
+      return;
+    }
+
+    // ── Down arrow: go forward through history ──
+    if (key.downArrow) {
+      if (historyIndex === -1) return;
+      const next = historyIndex - 1;
+      if (next < 0) {
+        setHistoryIndex(-1);
+        setValue(savedValue);
       } else {
-        // Cycle through matches
-        const next = (tabIndex + 1) % tabMatches.length;
-        setTabIndex(next);
-        setValue(applyCompletion(value, tabMatches[next]));
+        setHistoryIndex(next);
+        setCmdHistory(hist => { setValue(hist[next]); return hist; });
       }
       return;
     }
 
-    // Any non-tab key resets completion cycle
+    // ── Tab completion ──
+    if (key.tab) {
+      if (tabMatches.length === 0) {
+        const matches = getCompletions(value, cwd);
+        if (matches.length === 0) return;
+        if (matches.length === 1) {
+          // Single match — complete and add trailing space so cursor is at end
+          setValue(applyCompletion(value, matches[0]) + ' ');
+          return;
+        }
+        // Multiple matches — complete to longest common prefix, start cycling
+        const prefix = longestCommonPrefix(matches);
+        const withPrefix = applyCompletion(value, prefix);
+        setTabMatches(matches);
+        setTabIndex(0);
+        // Add trailing space so cursor lands at end of completed word
+        setValue(applyCompletion(withPrefix, matches[0]) + ' ');
+      } else {
+        // Cycle through matches, cursor always at end
+        const next = (tabIndex + 1) % tabMatches.length;
+        setTabIndex(next);
+        setValue(applyCompletion(value.trimEnd(), tabMatches[next]) + ' ');
+      }
+      return;
+    }
+
+    // Any non-tab, non-arrow key resets completion cycle
     if (tabMatches.length > 0) {
       setTabMatches([]);
       setTabIndex(-1);
     }
   });
 
-  return h(Box, { flexDirection: 'column' },
-    tabMatches.length > 1
-      ? h(Box, { paddingLeft: 2, marginBottom: 0 },
-          ...tabMatches.map((m, i) =>
-            h(Text, { key: m, color: i === tabIndex ? 'greenBright' : 'gray' }, `${m}  `)
-          )
-        )
-      : null,
-    h(Box, null,
-      h(Text, { color: 'greenBright', dimColor: true }, `journal ${label}/> `),
-      h(TextInput, {
-        value,
-        onChange: (v) => { setValue(v); },
-        onSubmit: handleSubmit,
-        placeholder: 'type a command...'
-      })
-    )
+  return h(Box, null,
+    h(Text, { color: 'greenBright', dimColor: true }, `journal ${label}/> `),
+    h(TextInput, {
+      value,
+      onChange: (v) => {
+        setValue(v);
+        // Typing resets history navigation
+        if (historyIndex !== -1) {
+          setHistoryIndex(-1);
+          setSavedValue('');
+        }
+      },
+      onSubmit: handleSubmit,
+      placeholder: 'type a command...'
+    })
   );
 }
 
