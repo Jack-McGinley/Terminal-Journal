@@ -480,10 +480,14 @@ function applyCompletion(value, completion) {
   return parts.join(' ');
 }
 
-// ── Prompt with tab completion + command history ──────────────────────────────
+// ── Prompt — fully custom input with owned cursor ─────────────────────────────
+// We manage the text buffer and cursor position ourselves so tab completion
+// can move the cursor to the exact position we want, not where ink-text-input
+// decides to put it.
 
 function Prompt({ cwd, onSubmit }) {
-  const [value, setValue] = useState('');
+  const [chars, setChars] = useState('');   // full input string
+  const [cursor, setCursor] = useState(0);  // cursor index into chars
   const [tabMatches, setTabMatches] = useState([]);
   const [tabIndex, setTabIndex] = useState(-1);
   const [cmdHistory, setCmdHistory] = useState([]);
@@ -491,96 +495,154 @@ function Prompt({ cwd, onSubmit }) {
   const [savedValue, setSavedValue] = useState('');
   const label = cwd === '/' ? '~' : '~' + cwd;
 
-  const handleSubmit = useCallback((val) => {
-    const trimmed = val.trim();
-    if (trimmed) {
-      setCmdHistory(h => [trimmed, ...h]);
-    }
-    setHistoryIndex(-1);
-    setSavedValue('');
-    setValue('');
-    setTabMatches([]);
-    setTabIndex(-1);
-    onSubmit(val);
-  }, [onSubmit]);
+  // Helper: set both text and cursor atomically
+  const setInput = (str, cur) => {
+    setChars(str);
+    setCursor(cur ?? str.length); // default cursor to end
+  };
 
   useInput((input, key) => {
 
-    // ── Up arrow: go back through history ──
+    // ── Submit ──
+    if (key.return) {
+      const trimmed = chars.trim();
+      if (trimmed) setCmdHistory(h => [trimmed, ...h]);
+      setHistoryIndex(-1);
+      setSavedValue('');
+      setTabMatches([]);
+      setTabIndex(-1);
+      const submitted = chars;
+      setInput('');
+      onSubmit(submitted);
+      return;
+    }
+
+    // ── History: up ──
     if (key.upArrow) {
       setCmdHistory(hist => {
         if (!hist.length) return hist;
         const next = Math.min(historyIndex + 1, hist.length - 1);
-        if (historyIndex === -1) setSavedValue(value); // save current draft
+        if (historyIndex === -1) setSavedValue(chars);
         setHistoryIndex(next);
-        setValue(hist[next]);
+        setInput(hist[next]); // cursor goes to end
         return hist;
       });
       return;
     }
 
-    // ── Down arrow: go forward through history ──
+    // ── History: down ──
     if (key.downArrow) {
       if (historyIndex === -1) return;
       const next = historyIndex - 1;
       if (next < 0) {
         setHistoryIndex(-1);
-        setValue(savedValue);
+        setInput(savedValue);
       } else {
         setHistoryIndex(next);
-        setCmdHistory(hist => { setValue(hist[next]); return hist; });
+        setCmdHistory(hist => { setInput(hist[next]); return hist; });
       }
+      return;
+    }
+
+    // ── Cursor left ──
+    if (key.leftArrow) {
+      setCursor(c => Math.max(0, c - 1));
+      return;
+    }
+
+    // ── Cursor right ──
+    if (key.rightArrow) {
+      setCursor(c => Math.min(chars.length, c + 1));
       return;
     }
 
     // ── Tab completion ──
     if (key.tab) {
       if (tabMatches.length === 0) {
-        const matches = getCompletions(value, cwd);
-        if (matches.length === 0) return;
+        const matches = getCompletions(chars, cwd);
+        if (!matches.length) return;
         if (matches.length === 1) {
-          // Single match — complete and add trailing space so cursor is at end
-          setValue(applyCompletion(value, matches[0]) + ' ');
+          const completed = applyCompletion(chars, matches[0]) + ' ';
+          setInput(completed); // cursor to end
           return;
         }
-        // Multiple matches — complete to longest common prefix, start cycling
         const prefix = longestCommonPrefix(matches);
-        const withPrefix = applyCompletion(value, prefix);
+        const withFirst = applyCompletion(applyCompletion(chars, prefix), matches[0]) + ' ';
         setTabMatches(matches);
         setTabIndex(0);
-        // Add trailing space so cursor lands at end of completed word
-        setValue(applyCompletion(withPrefix, matches[0]) + ' ');
+        setInput(withFirst); // cursor to end
       } else {
-        // Cycle through matches, cursor always at end
         const next = (tabIndex + 1) % tabMatches.length;
         setTabIndex(next);
-        setValue(applyCompletion(value.trimEnd(), tabMatches[next]) + ' ');
+        const completed = applyCompletion(chars.trimEnd(), tabMatches[next]) + ' ';
+        setInput(completed); // cursor to end
       }
       return;
     }
 
-    // Any non-tab, non-arrow key resets completion cycle
+    // Any printable/destructive key resets tab cycle
     if (tabMatches.length > 0) {
       setTabMatches([]);
       setTabIndex(-1);
     }
+
+    // Reset history navigation on typing
+    if (historyIndex !== -1 && input && !key.ctrl && !key.meta) {
+      setHistoryIndex(-1);
+      setSavedValue('');
+    }
+
+    // ── Backspace ──
+    if (key.backspace || key.delete) {
+      if (cursor === 0) return;
+      const next = chars.slice(0, cursor - 1) + chars.slice(cursor);
+      setInput(next, cursor - 1);
+      return;
+    }
+
+    // ── Ctrl+A: jump to start ──
+    if (key.ctrl && input === 'a') {
+      setCursor(0);
+      return;
+    }
+
+    // ── Ctrl+E: jump to end ──
+    if (key.ctrl && input === 'e') {
+      setCursor(chars.length);
+      return;
+    }
+
+    // ── Ctrl+U: clear line ──
+    if (key.ctrl && input === 'u') {
+      setInput('');
+      return;
+    }
+
+    // ── Printable character ──
+    if (input && !key.ctrl && !key.meta) {
+      const next = chars.slice(0, cursor) + input + chars.slice(cursor);
+      setInput(next, cursor + input.length);
+    }
   });
+
+  // Render the input with a visible block cursor
+  const before = chars.slice(0, cursor);
+  const cursorChar = chars[cursor] || ' ';
+  const after = chars.slice(cursor + 1);
+  const showPlaceholder = chars.length === 0;
 
   return h(Box, null,
     h(Text, { color: 'greenBright', dimColor: true }, `journal ${label}/> `),
-    h(TextInput, {
-      value,
-      onChange: (v) => {
-        setValue(v);
-        // Typing resets history navigation
-        if (historyIndex !== -1) {
-          setHistoryIndex(-1);
-          setSavedValue('');
-        }
-      },
-      onSubmit: handleSubmit,
-      placeholder: 'type a command...'
-    })
+    showPlaceholder
+      ? h(Box, null,
+          h(Text, { backgroundColor: 'green', color: 'black' }, ' '),
+          h(Text, { color: 'gray', dimColor: true }, 'type a command...')
+        )
+      : h(Box, null,
+          h(Text, { color: 'white' }, before),
+          h(Text, { backgroundColor: 'white', color: 'black' }, cursorChar),
+          h(Text, { color: 'white' }, after)
+        )
   );
 }
 
